@@ -137,18 +137,17 @@ jobs:
         run: make -j"$(nproc)"
 
       # 只收集真正的固件镜像文件(.itb/.img/.ubi/.bin,递归查找以兼容按设备
-      # 分子目录的输出布局),平铺进 release/ 后打包。
-      # 这样自动排除 packages/ 软件仓库、config.seed、buildinfo 等无关产物;
+      # 分子目录的输出布局),平铺进 release/ 直接发布,不再二次打包——
+      # 用户下载即刷,无需 7-Zip 解压 tar.zst;单个 itb 仅几十 MB,远低于
+      # GitHub 单资产 2GB 上限。自动排除 packages/ 仓库、config.seed 等无关产物;
       # 增删设备 profile 无需改动本步骤,镜像文件名自带设备名不会互相覆盖
-      - name: Pack ${{ env.TARGET }}
+      - name: Collect ${{ env.TARGET }} firmware
         run: |
           mkdir release
           find "bin/targets/airoha/${SUBTARGET_DIR}" -type f \
             \( -name '*.itb' -o -name '*.img' -o -name '*.ubi' -o -name '*.bin' \) \
             -exec cp -t release/ {} +
           test "$(find release -type f | wc -l)" -gt 0 || { echo "no firmware images found"; exit 1; }
-          tar --zstd -cf ponwrt.tar.zst -C release .
-          mv ponwrt.tar.zst release/"ponwrt-${TARGET}.tar.zst"
 
       # 上传到 Actions artifacts(保留 7 天,可在运行页面单独下载),
       # 供 release job 取用;找不到文件直接判失败
@@ -156,7 +155,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ponwrt-${{ env.TARGET }}
-          path: release/*.tar.zst
+          path: release/*
           if-no-files-found: error
           retention-days: 7
 
@@ -172,18 +171,19 @@ jobs:
       contents: write
 
     steps:
-      # 拉取所有 ponwrt-* artifact 并平铺到 release/ 目录
-      - name: Download firmware archives
+      # 拉取所有 ponwrt-* artifact(平铺的固件文件)还原到 release/ 目录
+      - name: Download firmware files
         uses: actions/download-artifact@v4
         with:
           pattern: ponwrt-*
           path: release
           merge-multiple: true
 
-      # 生成 sha256 校验文件,随固件一起发布,刷写前可用它核对完整性
+      # 对 release/ 内所有固件文件生成 sha256 校验(排除校验文件自身),
+      # 刷写前可用它核对完整性;用 find 而非通配符,避免某类扩展名不存在时报错
       - name: Create checksums
         working-directory: release
-        run: sha256sum *.tar.zst > sha256sums
+        run: find . -type f ! -name sha256sums -exec sha256sum {} + > sha256sums
 
       # 发布策略:
       #   - tag 按北京日期命名(dev-YYYYMMDD);定时运行在 UTC 21:00,即北京次日凌晨,
@@ -200,8 +200,7 @@ jobs:
             gh release delete "$release_tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
           fi
           gh release create "$release_tag" \
-            release/*.tar.zst \
-            release/sha256sums \
+            release/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "PonWrt $release_tag ($TARGET)" \
