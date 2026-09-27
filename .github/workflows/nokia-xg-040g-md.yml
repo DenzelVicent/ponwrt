@@ -1,4 +1,4 @@
-name: Release PonWrt
+name: nokia-xg-040g-md PonWrt
 
 on:
   workflow_dispatch:
