@@ -1,74 +1,46 @@
-# =============================================================================
-# Release PonWrt — 定时发布工作流
-# =============================================================================
-# 用途:每天北京时间 05:00(UTC 21:00)自动编译 nokia-xg-040g-md 一个型号,
-#       产物发布为 GitHub prerelease,tag 为 dev-<北京日期>。
-#
-# 固件构成:
-#   - 配置来源:configs/${TARGET}.config + configs/release.config(下方 Configure 步骤合并)
-#   - 设备 profile:nokia_xg-040g-md-ubi、nokia_xg-040g-md-ubi-usb-sfp(在 config 文件中选设备)
-#
-# 常用调整入口:
-#   - 换编译型号   :改 env.TARGET,指向另一个 configs/*.config(注意文件名须与 TARGET 完全一致)
-#   - 增删设备profile:改对应 configs/*.config 的 Target Devices 段,不动本文件
-#   - 改定时时间   :改下方 cron(UTC;北京时间 = UTC+8)
-#   - 手动跑一次   :Actions 页面 "Run workflow"(workflow_dispatch),与定时流程完全相同
-#
-# 注意:GitHub 对公共仓库的定时任务若 60 天无活动会自动暂停,需到 Actions 页面手动重新启用。
-# =============================================================================
 name: Release PonWrt
 
 on:
-  schedule:
-    # 每天北京时间 05:00(UTC 21:00)。cron 使用 UTC 时区
-    - cron: "0 21 * * *"
-  # 手动触发入口,无需填参数,行为与定时触发一致
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag
+        required: true
+        type: string
+      prerelease:
+        description: Mark as prerelease
+        required: true
+        default: true
+        type: boolean
 
-# 顶层最小权限;需要写权限的 release job 在其 job 级单独提升
 permissions:
   contents: read
 
-# 同一时刻只允许一条发布流水线;定时任务与手动触发共用此组,
-# 后触发的会排队等待而非取消已在运行的构建(cancel-in-progress: false)
 concurrency:
-  group: release-daily
+  group: release-${{ inputs.tag }}
   cancel-in-progress: false
 
-# 全局变量:所有步骤通过 $TARGET / $SUBTARGET_DIR 引用,换型号只改这里
-env:
-  # 配置文件名主体:实际加载 configs/nokia-xg-040g-md.config(连字符要与文件名一致)
-  TARGET: nokia-xg-040g-md
-  # 编译产物所在子目录 bin/targets/airoha/an7581,由 config 的 CONFIG_TARGET_SUBTARGET 决定,
-  # 换平台(如 an7583 的 xg-040g-mf)时需同步修改
-  SUBTARGET_DIR: an7581
-
 jobs:
-  # ---------------------------------------------------------------------------
-  # build:环境准备 -> feeds -> 配置合并 -> 下载源码包 -> 全量编译 -> 打包上传
-  # ---------------------------------------------------------------------------
   build:
-    # 注意:job 级 name 不允许使用 env 上下文(GitHub 上下文规则限制,
-    # 只有步骤级 name/with 可用 env),因此这里写死型号名;换型号时记得同步改此行,
-    # 或改用 matrix 方案让名称动态化(参见 git 历史中的原始多型号版本)
-    name: Build nokia-xg-040g-md
+    name: Build ${{ matrix.target }}
     runs-on: ubuntu-24.04
-    # OpenWrt 全量编译耗时较长,6 小时上限;超时本次构建失败,不会发布 Release
     timeout-minutes: 360
-    # 引用仓库 Settings > Environments 中的 "release" 环境(可在此类环境上配置保护规则和密钥)
     environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - an7581
+          - an7583
 
     steps:
       - uses: actions/checkout@v6
 
-      # 释放 runner 预装软件占用的磁盘(约 20-30GB),OpenWrt 编译对空间要求高
       - name: Free build space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
           sudo apt-get clean
 
-      # OpenWrt/ImmortalWrt 官方推荐的基础编译工具链与依赖,一般不需要增删;
-      # 若新增的软件包构建失败,先检查是否缺少这里的 -dev 库
       - name: Install build dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -85,26 +57,19 @@ jobs:
             qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo \
             uglifyjs unzip wget xmlto xxd zlib1g-dev zstd
 
-      # 缓存 dl/ 目录(所有第三方源码包),避免每次重新下载,通常可省 20-40 分钟。
-      # key 含 TARGET 与 feeds 配置、configs/ 全部文件的哈希;配置改动后 key 变化,
-      # 但 restore-keys 前缀匹配可继承旧缓存做增量
       - name: Cache downloads
         uses: actions/cache@v4
         with:
           path: dl
-          key: ponwrt-dl-${{ env.TARGET }}-${{ hashFiles('feeds.conf.default', 'configs/*.config') }}
+          key: ponwrt-dl-${{ matrix.target }}-${{ hashFiles('feeds.conf.default', 'configs/*.config') }}
           restore-keys: |
-            ponwrt-dl-${{ env.TARGET }}-
+            ponwrt-dl-${{ matrix.target }}-
 
-      # 更新并安装所有 feeds packages/luci/routing 等,固件里选的软件包来自这里
       - name: Install feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      # 把仓库签名私钥从 Secrets 写入工作目录(private-key.pem/public-key.pem,
-      # 已被 .gitignore 排除)。用于给 feeds 软件包仓库签名,配错或跳过会导致
-      # opkg/apk 校验失败,固件无法在线更新软件包
       - name: Load repository signing key
         env:
           PONWRT_APK_PRIVATE_KEY: ${{ secrets.PONWRT_APK_PRIVATE_KEY }}
@@ -115,106 +80,68 @@ jobs:
             openssl ec -in private-key.pem -pubout -out public-key.pem
           fi
 
-      # 生成 .config:kconfig.pl 以 "+" 模式合并(后者覆盖前者)——
-      #   configs/${TARGET}.config   平台/设备/内核/软件包基础配置
-      #   configs/release.config     发布版公共附加包(wireguard、hwaccel、BBR 等)
-      # 随后 make defconfig 展开依赖、填充默认值
-      - name: Configure ${{ env.TARGET }}
+      - name: Configure ${{ matrix.target }}
         run: |
           ./scripts/kconfig.pl + \
-            "configs/${TARGET}.config" \
+            "configs/${{ matrix.target }}.config" \
             configs/release.config > .config
           make defconfig
 
-      # 预下载全部源码包到 dl/(配合上面的缓存);单包下载失败不影响整体,
-      # 编译阶段会重试
       - name: Download sources
         run: make download -j"$(nproc)"
 
-      # 全量编译。产物输出到 bin/targets/airoha/an7581/,
-      # 含两个 profile 的 ubi 镜像、sysupgrade、kernel、根文件系统列表等。
-      # 并行编译(-j$(nproc))会吞掉失败包的原始报错,故失败时用 -j1 V=s 增量续跑:
-      #   - 若是真正的代码编译错误 → 单线程 verbose 会复现并把根因打印进日志,步骤仍失败;
-      #   - 若是 OOM/并发竞争(如 rust+python3 撑爆 16GB 内存)→ 单线程消除内存压力,
-      #     续跑通常直接编译成功,顺带起到自动兜底作用。
-      # 增量续跑不重来已完成的包,几分钟内即可定位。rc 传递退出码确保重试失败时步骤判负。
-      - name: Build ${{ env.TARGET }}
-        run: |
-          make -j"$(nproc)" || {
-            echo "::group::Verbose retry (-j1 V=s) to capture the real error"
-            rc=0
-            make -j1 V=s || rc=$?
-            echo "::endgroup::"
-            exit $rc
-          }
+      - name: Build ${{ matrix.target }}
+        run: make -j"$(nproc)"
 
-      # 只收集真正的固件镜像文件(.itb/.img/.ubi/.bin,递归查找以兼容按设备
-      # 分子目录的输出布局),平铺进 release/ 直接发布,不再二次打包——
-      # 用户下载即刷,无需 7-Zip 解压 tar.zst;单个 itb 仅几十 MB,远低于
-      # GitHub 单资产 2GB 上限。自动排除 packages/ 仓库、config.seed 等无关产物;
-      # 增删设备 profile 无需改动本步骤,镜像文件名自带设备名不会互相覆盖
-      - name: Collect ${{ env.TARGET }} firmware
+      - name: Pack ${{ matrix.target }}
         run: |
           mkdir release
-          find "bin/targets/airoha/${SUBTARGET_DIR}" -type f \
-            \( -name '*.itb' -o -name '*.img' -o -name '*.ubi' -o -name '*.bin' \) \
-            -exec cp -t release/ {} +
-          test "$(find release -type f | wc -l)" -gt 0 || { echo "no firmware images found"; exit 1; }
+          tar --zstd -cf "release/ponwrt-${{ matrix.target }}.tar.zst" \
+            -C bin/targets/airoha "${{ matrix.target }}"
 
-      # 上传到 Actions artifacts(保留 7 天,可在运行页面单独下载),
-      # 供 release job 取用;找不到文件直接判失败
-      - name: Upload ${{ env.TARGET }}
+      - name: Upload ${{ matrix.target }}
         uses: actions/upload-artifact@v4
         with:
-          name: ponwrt-${{ env.TARGET }}
-          path: release/*
+          name: ponwrt-${{ matrix.target }}
+          path: release/*.tar.zst
           if-no-files-found: error
           retention-days: 7
 
-  # ---------------------------------------------------------------------------
-  # release:聚合产物 -> 生成校验 -> 创建/覆盖当日 GitHub Release
-  # ---------------------------------------------------------------------------
   release:
     name: Create release
     needs: build
     runs-on: ubuntu-24.04
-    # 本 job 需要创建 Release,单独提升为写权限
     permissions:
       contents: write
 
     steps:
-      # 拉取所有 ponwrt-* artifact(平铺的固件文件)还原到 release/ 目录
-      - name: Download firmware files
+      - name: Download firmware archives
         uses: actions/download-artifact@v4
         with:
           pattern: ponwrt-*
           path: release
           merge-multiple: true
 
-      # 对 release/ 内所有固件文件生成 sha256 校验(排除校验文件自身),
-      # 刷写前可用它核对完整性;用 find 而非通配符,避免某类扩展名不存在时报错
       - name: Create checksums
         working-directory: release
-        run: find . -type f ! -name sha256sums -exec sha256sum {} + > sha256sums
+        run: sha256sum *.tar.zst > sha256sums
 
-      # 发布策略:
-      #   - tag 按北京日期命名(dev-YYYYMMDD);定时运行在 UTC 21:00,即北京次日凌晨,
-      #     因此 tag 日期等于用户刷写当日的自然日
-      #   - 同一天重复运行(手动重跑/失败重试)先删旧 Release 和旧 tag 再重建,保证覆盖
-      #   - --target GITHUB_SHA 把 Release 固定指向本次构建的 commit
-      #   - prerelease 标记:每日构建属开发版,不与正式版本混淆
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          release_tag="dev-$(TZ=Asia/Shanghai date +%Y%m%d)"
-          if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release delete "$release_tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
-          fi
-          gh release create "$release_tag" \
-            release/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "PonWrt $release_tag ($TARGET)" \
-            --prerelease \
+          args=(
+            "$RELEASE_TAG"
+            release/*.tar.zst
+            release/sha256sums
+            --repo "$GITHUB_REPOSITORY"
+            --target "$GITHUB_SHA"
+            --title "PonWrt $RELEASE_TAG"
             --generate-notes
+          )
+          if [ "$PRERELEASE" = true ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"
