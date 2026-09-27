@@ -132,9 +132,21 @@ jobs:
         run: make download -j"$(nproc)"
 
       # 全量编译。产物输出到 bin/targets/airoha/an7581/,
-      # 含两个 profile 的 ubi 镜像、sysupgrade、kernel、根文件系统列表等
+      # 含两个 profile 的 ubi 镜像、sysupgrade、kernel、根文件系统列表等。
+      # 并行编译(-j$(nproc))会吞掉失败包的原始报错,故失败时用 -j1 V=s 增量续跑:
+      #   - 若是真正的代码编译错误 → 单线程 verbose 会复现并把根因打印进日志,步骤仍失败;
+      #   - 若是 OOM/并发竞争(如 rust+python3 撑爆 16GB 内存)→ 单线程消除内存压力,
+      #     续跑通常直接编译成功,顺带起到自动兜底作用。
+      # 增量续跑不重来已完成的包,几分钟内即可定位。rc 传递退出码确保重试失败时步骤判负。
       - name: Build ${{ env.TARGET }}
-        run: make -j"$(nproc)"
+        run: |
+          make -j"$(nproc)" || {
+            echo "::group::Verbose retry (-j1 V=s) to capture the real error"
+            rc=0
+            make -j1 V=s || rc=$?
+            echo "::endgroup::"
+            exit $rc
+          }
 
       # 只收集真正的固件镜像文件(.itb/.img/.ubi/.bin,递归查找以兼容按设备
       # 分子目录的输出布局),平铺进 release/ 直接发布,不再二次打包——
