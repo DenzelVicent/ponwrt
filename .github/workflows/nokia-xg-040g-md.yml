@@ -1,23 +1,18 @@
 name: nokia-xg-040g-md PonWrt
 
 on:
+  # 手动触发入口,无需填参数;Release tag 由发布步骤按当天北京日期自动生成
+  # (dev-YYYYMMDD)。若要改为每天定时自动构建,可在此追加:
+  #   schedule:
+  #     - cron: "0 21 * * *"   # UTC 21:00 = 北京时间 05:00
   workflow_dispatch:
-    inputs:
-      tag:
-        description: Release tag
-        required: true
-        type: string
-      prerelease:
-        description: Mark as prerelease
-        required: true
-        default: true
-        type: boolean
 
 permissions:
   contents: read
 
+# 同一时刻只允许一条本型号的发布流水线;后触发的排队等待而非中断已运行的构建
 concurrency:
-  group: release-${{ inputs.tag }}
+  group: release-nokia-xg-040g-md
   cancel-in-progress: false
 
 jobs:
@@ -141,21 +136,25 @@ jobs:
         working-directory: release
         run: find . -type f ! -name sha256sums -exec sha256sum {} + > sha256sums
 
+      # 发布策略:
+      #   - tag 按北京日期自动生成(dev-YYYYMMDD),无需手动填写;定时/重跑都归入当天
+      #   - 同一天重复运行(手动重跑/失败重试)先删旧 Release 和旧 tag 再重建,保证覆盖
+      #   - --target GITHUB_SHA 把 Release 固定指向本次构建的 commit
+      #   - prerelease 标记:每日构建属开发版,不与正式版本混淆
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
-          PRERELEASE: ${{ inputs.prerelease }}
+          # release job 不在 matrix 内,取不到 matrix.target,型号名写死(与 build job 保持一致)
+          TARGET: nokia-xg-040g-md
         run: |
-          args=(
-            "$RELEASE_TAG"
-            release/*
-            --repo "$GITHUB_REPOSITORY"
-            --target "$GITHUB_SHA"
-            --title "PonWrt $RELEASE_TAG"
-            --generate-notes
-          )
-          if [ "$PRERELEASE" = true ]; then
-            args+=(--prerelease)
+          release_tag="dev-$(TZ=Asia/Shanghai date +%Y%m%d)"
+          if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete "$release_tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
           fi
-          gh release create "${args[@]}"
+          gh release create "$release_tag" \
+            release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "PonWrt $release_tag ($TARGET)" \
+            --prerelease \
+            --generate-notes
