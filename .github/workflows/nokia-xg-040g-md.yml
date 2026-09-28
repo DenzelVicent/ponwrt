@@ -92,17 +92,31 @@ jobs:
       - name: Build ${{ matrix.target }}
         run: make -j"$(nproc)"
 
-      - name: Pack ${{ matrix.target }}
+      # 只收集真正的固件镜像文件(.itb/.img/.ubi/.bin),平铺进 release/ 直接发布,
+      # 用户下载即刷,不再打 tar.zst。递归遍历整个 bin/targets/airoha 是刻意的:
+      # OpenWrt 产物目录按 subtarget 命名(an7581),多 profile 时镜像还会再按
+      # 设备分子目录,目录名与 matrix.target(型号名)并不一致,写死目录名会报
+      # "Cannot stat";用 find 兼容两种布局,增删设备 profile 也无需改本步骤。
+      # 每个 profile 目录下文件名相同(如 sysupgrade.itb),直接 cp -t 会互相覆盖,
+      # 故拷贝时以父目录名(profile 名)作前缀重命名。
+      # 自动排除 packages/ 软件包仓库、config.seed、.buildinfo 等无关产物
+      - name: Collect ${{ matrix.target }} firmware
         run: |
           mkdir release
-          tar --zstd -cf "release/ponwrt-${{ matrix.target }}.tar.zst" \
-            -C bin/targets/airoha "${{ matrix.target }}"
+          found=0
+          while IFS= read -r f; do
+            cp "$f" "release/$(basename "$(dirname "$f")")-$(basename "$f")"
+            found=1
+          done < <(find bin/targets/airoha -type f \
+                     \( -name '*.itb' -o -name '*.img' -o -name '*.ubi' -o -name '*.bin' \) \
+                     -not -path '*/packages/*')
+          test "$found" = 1 || { echo "no firmware images found"; exit 1; }
 
       - name: Upload ${{ matrix.target }}
         uses: actions/upload-artifact@v4
         with:
           name: ponwrt-${{ matrix.target }}
-          path: release/*.tar.zst
+          path: release/*
           if-no-files-found: error
           retention-days: 7
 
@@ -114,16 +128,18 @@ jobs:
       contents: write
 
     steps:
-      - name: Download firmware archives
+      - name: Download firmware files
         uses: actions/download-artifact@v4
         with:
           pattern: ponwrt-*
           path: release
           merge-multiple: true
 
+      # 对 release/ 内所有固件文件生成 sha256 校验(排除校验文件自身),
+      # 刷写前可用它核对完整性;用 find 而非通配符,避免某类扩展名不存在时报错
       - name: Create checksums
         working-directory: release
-        run: sha256sum *.tar.zst > sha256sums
+        run: find . -type f ! -name sha256sums -exec sha256sum {} + > sha256sums
 
       - name: Create GitHub release
         env:
@@ -133,8 +149,7 @@ jobs:
         run: |
           args=(
             "$RELEASE_TAG"
-            release/*.tar.zst
-            release/sha256sums
+            release/*
             --repo "$GITHUB_REPOSITORY"
             --target "$GITHUB_SHA"
             --title "PonWrt $RELEASE_TAG"
