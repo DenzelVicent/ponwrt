@@ -1,4 +1,4 @@
-name: Release PonWrt
+name: Release ImmortalWrt
 
 on:
   workflow_dispatch:
@@ -61,9 +61,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: dl
-          key: ponwrt-dl-${{ matrix.target }}-${{ hashFiles('feeds.conf.default', 'configs/*.config') }}
+          key: immortalwrt-dl-${{ matrix.target }}-${{ hashFiles('feeds.conf.default', 'configs/*.config') }}
           restore-keys: |
-            ponwrt-dl-${{ matrix.target }}-
+            immortalwrt-dl-${{ matrix.target }}-
 
       - name: Install feeds
         run: |
@@ -96,13 +96,13 @@ jobs:
       - name: Pack ${{ matrix.target }}
         run: |
           mkdir release
-          tar --zstd -cf "release/ponwrt-${{ matrix.target }}.tar.zst" \
+          tar --zstd -cf "release/immortalwrt-${{ matrix.target }}.tar.zst" \
             -C bin/targets/airoha "${{ matrix.target }}"
 
       - name: Upload ${{ matrix.target }}
         uses: actions/upload-artifact@v4
         with:
-          name: ponwrt-${{ matrix.target }}
+          name: immortalwrt-${{ matrix.target }}
           path: release/*.tar.zst
           if-no-files-found: error
           retention-days: 7
@@ -118,7 +118,7 @@ jobs:
       - name: Download firmware archives
         uses: actions/download-artifact@v4
         with:
-          pattern: ponwrt-*
+          pattern: immortalwrt-*
           path: release
           merge-multiple: true
 
@@ -138,7 +138,7 @@ jobs:
             release/sha256sums
             --repo "$GITHUB_REPOSITORY"
             --target "$GITHUB_SHA"
-            --title "PonWrt $RELEASE_TAG"
+            --title "ImmortalWrt $RELEASE_TAG"
             --generate-notes
           )
           if [ "$PRERELEASE" = true ]; then
