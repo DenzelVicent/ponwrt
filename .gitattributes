@@ -1,4 +1,30 @@
+# 行尾符规范化
+# 背景: 本机 core.autocrlf=true，而下面第一行的 `* -text` 表示 git 对该仓库不做任何
+#       行尾转换 —— checkout 与 git add 都原样保留字节。后果是 Windows 编辑器/脚本
+#       (如 python 文本模式写文件) 产生的 CRLF 会被原样提交进 blob。
+#       实例: target/linux/airoha/patches-6.18/608-...-AN7581-PON-line-modes.patch
+#       在 2102098015 提交里整个文件变成 CRLF(3129 行 CR)，与 master 的语义差异只有
+#       +7/-1，git diff 却显示 3129/3123 全改，回看和合并都会被噪音淹没。
+# 规则: 会被 Linux 侧读取、编译或安装的文本源码显式声明 `text eol=lf` —— 入仓归一成
+#       LF、检出也保持 LF，从源头堵住上面的问题；工作区因此仍是 LF，不会多出伪改动。
+# 例外: 上游自带的 package/kernel/aic8800 与 tools/7z 里 6 个 patch 本身就是 CRLF，
+#       不属于本项目维护范围，继续由 `* -text` 保持原样（所以 patch 规则只限定 airoha
+#       目录，不做全局 `*.patch text eol=lf`，免得renormalize 出无谓的上游 diff）。
+# 维护: 新增需在 Linux 侧使用的源码类型时按同样格式追加一行；改完对受影响路径执行
+#       `git add --renormalize <路径>`，再用 `git grep -I -l -P '\r' <分支>` 确认只剩上游那 6 个。
 * -text
 *.patch whitespace=-indent-with-non-tab,-space-before-tab,-tab-in-indent,-trailing-space
 *.dts text eol=lf
 *.dts[io] text eol=lf
+target/linux/airoha/patches-6.18/*.patch text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+*.mk text eol=lf
+Makefile text eol=lf
+Kconfig text eol=lf
+configs/*.config text eol=lf
+feeds.conf.default text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
