@@ -1,49 +1,48 @@
 # PonWrt
 
-English | [简体中文](README_zh.md)
+[English](README.md) | 简体中文
 
-PonWrt is based on [ImmortalWrt](https://github.com/immortalwrt/immortalwrt) and adds support for Airoha AN7581 and AN7583 PON devices.
+PonWrt 基于 [ImmortalWrt](https://github.com/immortalwrt/immortalwrt)，增加了对 Airoha AN7581 和 AN7583 PON 设备的支持。
 
-## ⚠️ Disclaimer
+## ⚠️ 免责声明
 
-PonWrt is an open-source firmware project intended for research and development.
+PonWrt 是一个用于研究和开发的开源光猫固件项目。
 
-Flashing firmware or modifying PON-related settings involves risks and may result in boot failure, loss of configuration or device-specific data, or failure to register with the PON network. Please back up the original firmware and device data before making any changes.
+刷写固件或修改 PON 相关配置存在风险，可能导致设备无法启动、配置或设备数据丢失、PON 无法注册等问题。操作前请务必备份原厂固件及设备相关数据。
 
-Users are responsible for ensuring that their use complies with applicable laws, regulations, and network operator requirements. Do not use this project for unauthorized network access, impersonating or cloning another device's identity, or interfering with operator networks.
+使用者应自行确保相关操作符合当地法律法规及运营商相关规定。请勿将本项目用于未经授权的网络接入、冒用或复制他人设备身份，或干扰运营商网络正常运行。
 
-The authors and contributors are not responsible for device damage, network service disruption, or other consequences resulting from flashing, configuring, or using this project.
+因刷写、配置或使用本项目产生的设备故障、网络服务异常及其他后果，由使用者自行承担。
 
-## Supported devices
+## 支持设备
 
-| SoC | Device | Profile | Stock calibration / identity data |
+| SoC | 设备 | Profile | 原厂校准/身份数据分区 |
 | --- | --- | --- | --- |
 | AN7581 | FiberHome HG5382A | `fiberhome_hg5382a` | `factory` |
 | AN7581 | FiberHome HG5585F CT | `fiberhome_hg5585f-ct` | `factory` |
 | AN7581 | FiberHome HG5585F CU | `fiberhome_hg5585f-cu` | `factory` |
 | AN7581 | Gemtek XG2010G | `gemtek_xg2010g` | `dsd` |
-| AN7581 | Nokia XG-040G-MD UBI | `nokia_xg-040g-md-ubi` | `bosa`, `ri` |
-| AN7581 | Nokia XG-040G-TF UBI | `nokia_xg-040g-tf-ubi` | `bosa`, `ri` |
+| AN7581 | Nokia XG-040G-MD UBI | `nokia_xg-040g-md-ubi` | `bosa`、`ri` |
+| AN7581 | Nokia XG-040G-TF UBI | `nokia_xg-040g-tf-ubi` | `bosa`、`ri` |
 | AN7581 | UnionMan UNG00A | `unionman_ung00a` | `reservearea` |
 | AN7581 | ZNXT ZN504XG-D | `znxt_zn504xg-d` | `reservearea` |
 | AN7581 | ZNXT ZN515XG-D | `znxt_zn515xg-d` | `reservearea` |
-| AN7581 | H3C HM2004-DU | `h3c_hm2004-du` | `factory` |
-| AN7583 | Nokia XG-040G-MF | `nokia_xg-040g-mf`, `nokia_xg-040g-mf-ubi` | `bosa`, `ri` |
+| AN7583 | Nokia XG-040G-MF | `nokia_xg-040g-mf`、`nokia_xg-040g-mf-ubi` | `bosa`、`ri` |
 
-## Build
+## 编译
 
-> This branch, `AN7581-gpon`, is for GPON line debugging on AN7581 devices (use `master` for XGS-PON). Compared with `master` it adds only three things: GPON mode register setup in the kernel PCS patch, PON feeds pointing at the GPON forks, and the local build config `configs/an7581-gpon.config`.
+> 本分支 `AN7581-gpon` 用于 AN7581 设备的 GPON 线路调试（XGS-PON 请用 `master`）。相对 `master` 只多三处改动：内核 PCS patch 增加 GPON 模式寄存器设置、`feeds.conf.default` 的 PON feed 指向含 GPON 改造的 fork、新增 GPON 本地编译配置 `configs/an7581-gpon.config`。
 >
-> GPON support spans three sources, missing any one of them leaves the ONU unregistered:
+> GPON 支持横跨三个来源，缺一 ONU 就无法注册：
 >
-> | Source | Branch | Content |
+> | 来源 | 分支 | 内容 |
 > | --- | --- | --- |
-> | PonWrt | `AN7581-gpon` | Kernel patch `target/linux/airoha/patches-6.18/608-net-pcs-airoha-add-AN7581-PON-line-modes.patch`: GPON writes `DIG_RESERVE_0=0x400` and sets `FORCE_RX_RDY` |
-> | [openwrt-pon-drivers](https://github.com/DenzelVicent/openwrt-pon-drivers) | `main` | PON MAC driver: enables GPON `mac_supported`, digital PHY RX mode `0x400`, response time `0xAA2` |
-> | [openwrt-pon-userspace](https://github.com/DenzelVicent/openwrt-pon-userspace) | `main` | LuCI / userspace: adds the GPON mode option to the PON configuration dropdown |
+> | PonWrt | `AN7581-gpon` | 内核 patch `target/linux/airoha/patches-6.18/608-net-pcs-airoha-add-AN7581-PON-line-modes.patch`：GPON 写 `DIG_RESERVE_0=0x400` 并置 `FORCE_RX_RDY` |
+> | [openwrt-pon-drivers](https://github.com/DenzelVicent/openwrt-pon-drivers) | `main` | PON MAC 驱动：解锁 GPON `mac_supported`、数字 PHY RX 模式 `0x400`、响应时间 `0xAA2` |
+> | [openwrt-pon-userspace](https://github.com/DenzelVicent/openwrt-pon-userspace) | `main` | LuCI/用户态：PON 配置下拉增加 GPON 模式选项 |
 
 ```sh
-#  Install the required toolchain and libraries for building
+#  安装编译所需的工具链和库
 sudo apt update -y
 sudo apt full-upgrade -y
 sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
@@ -55,55 +54,54 @@ sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bis
   python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs \
   upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
 
-#  Or use the ImmortalWrt one-click script to install dependencies
+#  或者使用ImmortalWrt一键脚本安装依赖
 sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
 
-
-#  Clone the source code (GPON branch; use master / the upstream repository for XGS-PON)
-git clone -b AN7581-gpon https://github.com/DenzelVicent/ponwrt.git
+#  拉取源码（GPON 分支；XGS-PON 用 master 分支与上游仓库）
+git clone -b AN7581-GPON https://github.com/DenzelVicent/ponwrt.git
 cd ponwrt
 
-
-#  Update and install feeds (package sources)
-#  On this branch feeds.conf.default already points pon_drivers / pon_userspace at the GPON forks,
-#  so update -a picks up the GPON code. Reverting those two lines to upstream pbs05 builds an
-#  XG-PON-only driver again.
+#  更新并安装 feeds（软件包源）
+#  本分支 feeds.conf.default 里 pon_drivers / pon_userspace 已指向含 GPON 改造的 fork，
+#  直接 update -a 即取到 GPON 代码；若这两行被改回上游 pbs05，编出的驱动仍是 XG-PON only
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
-
-#  Third-party plugins: required when using config A below (neither package exists in any feed, so
-#  kconfig drops them silently instead of failing); optional with config B
-#  Must run after feeds install: luci-base and other feed packages are linked by then, so the
-#  plugin dependencies resolve correctly
+#  第三方插件：选配置 A 时必须克隆（这两个包不在任何 feed 内，缺了会被静默跳过、不报错）；选配置 B 时按需
+#  顺序要求：必须在 feeds install 之后执行（此时 luci-base 等 feed 包已就位，插件依赖才能被解析）
 git clone --depth 1 https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
 git clone --depth 1 https://github.com/DenzelVicent/luci-app-airoha-npu.git package/luci-app-airoha-npu
 
-
-#  Select a configuration, pick one of A / B (both already select kmod-airoha-xpon /
-#  kmod-airoha-pon-frontend / luci-app-pon / airoha-ponctl·pond·pon-debug, so menuconfig is not needed)
-#  A. Reproduce the GPON cloud build: only the nokia_xg-040g-md-ubi profile, with the PON components
-#     and third-party UIs selected exactly as CI does
-cp configs/an7581-gpon.config .config
-#  B. (optional) Build for every AN7581 board upstream supports: an7581.config selects 12 profiles, much
-#     slower than a single one. Targeting AN7583? Replace an7581 with an7583 below
+#  选择配置（A / B 二选一；两者都已默认选中 kmod-airoha-xpon / kmod-airoha-pon-frontend /
+#  luci-app-pon / airoha-ponctl·pond·pon-debug，不用再进 menuconfig）
+#  A. 复现 GPON 云编译产物：只编 nokia_xg-040g-md-ubi 一个 profile，PON 组件与第三方界面按 CI 全量选中
+cp an7581-gpon.config .config
+#  B. （可选）编译上游支持的全部 AN7581 设备：an7581.config 选了 12 个 profile，耗时远长于单设备
+#     目标是 AN7583 就把下面的 an7581 换成 an7583
 # cp configs/an7581.config .config
 # ./scripts/kconfig.pl + configs/an7581.config configs/release.config > .config
 
 
-
-#  Start building
-# -j$(nproc) means compiling in parallel with all CPU cores to speed things up
-#  The kernel-side GPON changes (PCS/PMA registers) are compiled into the kernel, so rebuilding only
-#  the PON packages does not apply them — a full firmware build is required
+#  开始编译
+# -j$(nproc) 表示用所有 CPU 核心并行编译，加快速度
+# 内核侧 GPON 改动（PCS/PMA 寄存器）在编译期打进内核，只单独重编 PON 软件包不会生效，需重编完整固件
 make defconfig
+make download -j8 V=s
+make -j$(nproc)
+
+
+# 修改补丁后可快速编译内核后打包
+# 1. 只重建内核（重解压 + 重打 patch + 重编）
+make target/linux/clean
+make target/linux/compile -j$(nproc)
+# 2. 生成固件镜像（打包 kernel + rootfs）
 make -j$(nproc)
 ```
 
-Images are written to `bin/targets/airoha/an7581/` or `bin/targets/airoha/an7583/`.
+固件位于 `bin/targets/airoha/an7581/` 或 `bin/targets/airoha/an7583/`。
 
-## Install
+## 刷入
 
-Use [AN758x-Stock2UBI](https://github.com/pbs05/an758x-stock2ubi) to back up the stock flash and install the UBI layout. Boot images and Web recovery are provided by [AN758x U-Boot](https://github.com/pbs05/uboot-an758x).
+使用 [AN758x-Stock2UBI](https://github.com/pbs05/an758x-stock2ubi) 备份原厂闪存并安装 UBI 布局。启动镜像和 Web 恢复界面由 [AN758x U-Boot](https://github.com/pbs05/uboot-an758x) 提供。
 
-After installing PonWrt, restore the stock calibration and identity data through U-Boot Web or **Network → PON → Configuration → PON board data** in LuCI. Convert FiberHome `factory` backups with [FiberHome Factory](https://github.com/pbs05/fiberhome-factory) first. Restore converted FiberHome data, `reservearea`, or `dsd` backups to the PonWrt `factory` volume. Nokia `bosa` and `ri` backups use volumes with the same names.
+刷入 PonWrt 后，通过 U-Boot Web 或 LuCI 的“网络 → PON → 配置 → PON board data”恢复原厂校准和身份数据。烽火 `factory` 需要先使用 [FiberHome Factory](https://github.com/pbs05/fiberhome-factory) 转换；转换后的烽火数据、`reservearea` 和 `dsd` 写入 PonWrt 的 `factory` 卷；Nokia 的 `bosa` 和 `ri` 写入同名卷。
