@@ -1,7 +1,5 @@
 # PonWrt
 
-[English](README.md) | 简体中文
-
 PonWrt 基于 [ImmortalWrt](https://github.com/immortalwrt/immortalwrt)，增加了对 Airoha AN7581 和 AN7583 PON 设备的支持。
 
 ## ⚠️ 免责声明
@@ -27,6 +25,7 @@ PonWrt 是一个用于研究和开发的开源光猫固件项目。
 | AN7581 | UnionMan UNG00A | `unionman_ung00a` | `reservearea` |
 | AN7581 | ZNXT ZN504XG-D | `znxt_zn504xg-d` | `reservearea` |
 | AN7581 | ZNXT ZN515XG-D | `znxt_zn515xg-d` | `reservearea` |
+| AN7581 | H3C HM2004-DU | `h3c_hm2004-du` | `factory` |
 | AN7583 | Nokia XG-040G-MF | `nokia_xg-040g-mf`、`nokia_xg-040g-mf-ubi` | `bosa`、`ri` |
 
 ## 编译
