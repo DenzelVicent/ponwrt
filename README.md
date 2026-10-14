@@ -2,7 +2,7 @@
 
 PonWrt 基于 [ImmortalWrt](https://github.com/immortalwrt/immortalwrt)，增加了对 Airoha AN7581 和 AN7583 PON 设备的支持。
 
-## ️ 免责声明
+## ⚠️ 免责声明
 
 PonWrt 是一个用于研究和开发的开源光猫固件项目。
 
@@ -46,23 +46,41 @@ sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bis
 #  或者使用ImmortalWrt一键脚本安装依赖
 sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
 
-#  拉取源码
-git clone https://github.com/pbs05/ponwrt.git
+#  拉取源码（用 master 分支与上游仓库保持同步）
+git clone -b master https://github.com/DenzelVicent/ponwrt.git
 cd ponwrt
 
 #  更新并安装 feeds（软件包源）
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
-#  选择配置 以目标7581为例
-cp configs/an7581.config .config
-#  若目标是 AN7583，改用下面这行：
-cp configs/an7583.config .config
+#  第三方插件：选配置 A 时必须克隆（这两个包不在任何 feed 内，缺了会被静默跳过、不报错）；选配置 B 时按需
+#  顺序要求：必须在 feeds install 之后执行（此时 luci-base 等 feed 包已就位，插件依赖才能被解析）
+git clone --depth 1 https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
+git clone --depth 1 https://github.com/DenzelVicent/luci-app-airoha-npu.git package/luci-app-airoha-npu
+
+#  选择配置（A / B 二选一；两者都已默认选中 kmod-airoha-xpon / kmod-airoha-pon-frontend /
+#  luci-app-pon / airoha-ponctl·pond·pon-debug，不用再进 menuconfig）
+#  A. 复现 GPON 云编译产物：只编 nokia_xg-040g-md-ubi 一个 profile，PON 组件与第三方界面按 CI 全量选中
+cp an7581-gpon.config .config
+#  B. （可选）编译上游支持的全部 AN7581 设备：an7581.config 选了 12 个 profile，耗时远长于单设备
+#     目标是 AN7583 就把下面的 an7581 换成 an7583
+# cp configs/an7581.config .config
+# ./scripts/kconfig.pl + configs/an7581.config configs/release.config > .config
 
 
 #  开始编译
 # -j$(nproc) 表示用所有 CPU 核心并行编译，加快速度
 make defconfig
+make download -j8 V=s
+make -j$(nproc)
+
+
+# 修改补丁后可快速编译内核后打包
+# 1. 只重建内核（重解压 + 重打 patch + 重编）
+make target/linux/clean
+make target/linux/compile -j$(nproc)
+# 2. 生成固件镜像（打包 kernel + rootfs）
 make -j$(nproc)
 ```
 
