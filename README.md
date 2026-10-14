@@ -62,7 +62,7 @@ git clone --depth 1 https://github.com/DenzelVicent/luci-app-airoha-npu.git pack
 #  选择配置（A / B 二选一；两者都已默认选中 kmod-airoha-xpon / kmod-airoha-pon-frontend /
 #  luci-app-pon / airoha-ponctl·pond·pon-debug，不用再进 menuconfig）
 #  A. 复现 GPON 云编译产物：只编 nokia_xg-040g-md-ubi 一个 profile，PON 组件与第三方界面按 CI 全量选中
-cp an7581-gpon.config .config
+cp an7581.config .config
 #  B. （可选）编译上游支持的全部 AN7581 设备：an7581.config 选了 12 个 profile，耗时远长于单设备
 #     目标是 AN7583 就把下面的 an7581 换成 an7583
 # cp configs/an7581.config .config
