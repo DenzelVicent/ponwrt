@@ -31,6 +31,16 @@ PonWrt 是一个用于研究和开发的开源光猫固件项目。
 
 ## 编译
 
+> 本分支 `AN7581-gpon` 用于 AN7581 设备的 GPON 线路调试（XGS-PON 请用 `master`）。相对 `master` 只多三处改动：内核 PCS patch 增加 GPON 模式寄存器设置、`feeds.conf.default` 的 PON feed 指向含 GPON 改造的 fork、新增 GPON 本地编译配置 `configs/an7581-gpon.config`。
+>
+> GPON 支持横跨三个来源，缺一 ONU 就无法注册：
+>
+> | 来源 | 分支 | 内容 |
+> | --- | --- | --- |
+> | PonWrt | `AN7581-gpon` | 内核 patch `target/linux/airoha/patches-6.18/608-net-pcs-airoha-add-AN7581-PON-line-modes.patch`：GPON 写 `DIG_RESERVE_0=0x400` 并置 `FORCE_RX_RDY` |
+> | [openwrt-pon-drivers](https://github.com/DenzelVicent/openwrt-pon-drivers) | `main` | PON MAC 驱动：解锁 GPON `mac_supported`、数字 PHY RX 模式 `0x400`、响应时间 `0xAA2` |
+> | [openwrt-pon-userspace](https://github.com/DenzelVicent/openwrt-pon-userspace) | `main` | LuCI/用户态：PON 配置下拉增加 GPON 模式选项 |
+
 ```sh
 #  安装编译所需的工具链和库
 sudo apt update -y
@@ -47,23 +57,44 @@ sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bis
 #  或者使用ImmortalWrt一键脚本安装依赖
 sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
 
-#  拉取源码
-git clone https://github.com/pbs05/ponwrt.git
+#  拉取源码（GPON 分支；XGS-PON 用 master 分支与上游仓库）
+git clone -b AN7581-GPON https://github.com/DenzelVicent/ponwrt.git
 cd ponwrt
 
 #  更新并安装 feeds（软件包源）
+#  本分支 feeds.conf.default 里 pon_drivers / pon_userspace 已指向含 GPON 改造的 fork，
+#  直接 update -a 即取到 GPON 代码；若这两行被改回上游 pbs05，编出的驱动仍是 XG-PON only
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
-#  选择配置 以目标7581为例
-cp configs/an7581.config .config
-#  若目标是 AN7583，改用下面这行：
-cp configs/an7583.config .config
+#  第三方插件：选配置 A 时必须克隆（这两个包不在任何 feed 内，缺了会被静默跳过、不报错）；选配置 B 时按需
+#  顺序要求：必须在 feeds install 之后执行（此时 luci-base 等 feed 包已就位，插件依赖才能被解析）
+git clone --depth 1 https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
+git clone --depth 1 https://github.com/DenzelVicent/luci-app-airoha-npu.git package/luci-app-airoha-npu
+
+#  选择配置（A / B 二选一；两者都已默认选中 kmod-airoha-xpon / kmod-airoha-pon-frontend /
+#  luci-app-pon / airoha-ponctl·pond·pon-debug，不用再进 menuconfig）
+#  A. 复现 GPON 云编译产物：只编 nokia_xg-040g-md-ubi 一个 profile，PON 组件与第三方界面按 CI 全量选中
+cp an7581-gpon.config .config
+#  B. （可选）编译上游支持的全部 AN7581 设备：an7581.config 选了 12 个 profile，耗时远长于单设备
+#     目标是 AN7583 就把下面的 an7581 换成 an7583
+# cp configs/an7581.config .config
+# ./scripts/kconfig.pl + configs/an7581.config configs/release.config > .config
 
 
 #  开始编译
 # -j$(nproc) 表示用所有 CPU 核心并行编译，加快速度
+# 内核侧 GPON 改动（PCS/PMA 寄存器）在编译期打进内核，只单独重编 PON 软件包不会生效，需重编完整固件
 make defconfig
+make download -j8 V=s
+make -j$(nproc)
+
+
+# 修改补丁后可快速编译内核后打包
+# 1. 只重建内核（重解压 + 重打 patch + 重编）
+make target/linux/clean
+make target/linux/compile -j$(nproc)
+# 2. 生成固件镜像（打包 kernel + rootfs）
 make -j$(nproc)
 ```
 
