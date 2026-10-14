@@ -508,7 +508,7 @@ Index: b/drivers/net/pcs/airoha/pcs-an7581.c
  #include <linux/phylink.h>
  #include <linux/regmap.h>
  
-@@ -1821,6 +1822,1476 @@ static void an7581_pcs_cdr_reset(struct
+@@ -1821,6 +1822,1517 @@ static void an7581_pcs_cdr_reset(struct
  			  AIROHA_PCS_PMA_FORCE_SEL_DA_CDR_LPF_LCK2DATA);
  }
  
@@ -1029,6 +1029,34 @@ Index: b/drivers/net/pcs/airoha/pcs-an7581.c
 +			regmap_update_bits(pma, 0x778, GENMASK(5, 0), 0x0e);
 +			regmap_update_bits(pma, 0x780, GENMASK(4, 0), 0x04);
 +		}
++	} else if (priv->pon_mode == AIROHA_PCS_PON_MODE_GPON) {
++		/*
++		 * GPON: 2.488 Gbps downstream, 1.244 Gbps upstream.
++		 * Override RX/TX parameters that differ from XG-PON.
++		 * TXPLL PCW (0x07f66e86) and ANA VCO settings are shared.
++		 */
++
++		/* RX: GPON uses 2.5G-rate CDR parameters */
++		regmap_update_bits(ana, 0x0d4, GENMASK(15, 0), 0x18b0);
++		regmap_write(pma, AIROHA_PCS_PMA_DIG_RESERVE_0, 0x400);
++
++		/* RX: GPON OSR=1 for 2.5G CDR (XG-PON uses 0).
++		 * Upstream 310-09 sets OSR via PXP_AEQ_SPEED bits[17:16] + force bit;
++		 * the XG-PON table already wrote OSR=0 there, so override for GPON.
++		 */
++		regmap_update_bits(pma, AIROHA_PCS_PMA_PXP_AEQ_SPEED,
++				   BIT(24) | GENMASK(17, 16),
++				   BIT(24) | FIELD_PREP(GENMASK(17, 16), 1));
++
++		/* RX: GPON CDR LPF ratio = 1 (matches OSR; XG-PON uses 0) */
++		regmap_update_bits(ana, 0xe8, GENMASK(1, 0), 1);
++
++		/* TX: GPON upstream 1.244 Gbps timing */
++		regmap_update_bits(pma, 0x77c, GENMASK(19, 16), 2 << 16);
++		regmap_update_bits(pma, 0x468,
++				   GENMASK(14, 8) | GENMASK(6, 0),
++				   (4 << 8) | 2);
++		regmap_update_bits(pma, 0x580, GENMASK(1, 0), 2);
 +	}
 +
 +#undef APPLY_XGPON_TABLE
@@ -1053,8 +1081,12 @@ Index: b/drivers/net/pcs/airoha/pcs-an7581.c
 +
 +	/* Line encoding rate selects the XPON_DIG_fm_on() window. */
 +	regmap_write(pma, 0x14c, 0x7fff7fff);
-+	if (priv->pon_mode == AIROHA_PCS_PON_MODE_EPON_10G_1G ||
-+	    priv->pon_mode == AIROHA_PCS_PON_MODE_EPON_10G_10G) {
++	if (priv->pon_mode == AIROHA_PCS_PON_MODE_GPON) {
++		/* GPON FreqDet lock/unlock window: PrCal target 0x2926 ± 100. */
++		regmap_write(pma, 0x150, (0x298a << 16) | 0x28c2);
++		regmap_write(pma, 0x154, (0x298a << 16) | 0x28c2);
++	} else if (priv->pon_mode == AIROHA_PCS_PON_MODE_EPON_10G_1G ||
++		   priv->pon_mode == AIROHA_PCS_PON_MODE_EPON_10G_10G) {
 +		regmap_write(pma, 0x150, (0x9f43 << 16) | 0x9e7a);
 +		regmap_write(pma, 0x154, (0x9f43 << 16) | 0x9e7a);
 +	} else {
@@ -1079,6 +1111,7 @@ Index: b/drivers/net/pcs/airoha/pcs-an7581.c
 +	struct regmap *pma = priv->pcs_pma[index];
 +	struct regmap *ana = priv->pcs_ana;
 +	const u16 target =
++		priv->pon_mode == AIROHA_PCS_PON_MODE_GPON ? 0x2926 :
 +		priv->pon_mode == AIROHA_PCS_PON_MODE_EPON_10G_1G ||
 +		priv->pon_mode == AIROHA_PCS_PON_MODE_EPON_10G_10G ?
 +		0x9edf : 0xa49a;
@@ -1157,6 +1190,7 @@ Index: b/drivers/net/pcs/airoha/pcs-an7581.c
 +	dev_info(priv->dev,
 +		 "PON PrCal: mode=%u attempt=%d idac=0x%03x lock=%d fl=0x%04x target=0x%04x\n",
 +		 priv->pon_mode, attempt, idac, !ret, fl,
++		 priv->pon_mode == AIROHA_PCS_PON_MODE_GPON ? 0x2926 :
 +		 priv->pon_mode == AIROHA_PCS_PON_MODE_EPON_10G_1G ||
 +		 priv->pon_mode == AIROHA_PCS_PON_MODE_EPON_10G_10G ?
 +		 0x9edf : 0xa49a);
@@ -1846,9 +1880,17 @@ Index: b/drivers/net/pcs/airoha/pcs-an7581.c
 +	int prcal_ret;
 +	int ret;
 +
-+	if (priv->data->port_type != AIROHA_PCS_PON ||
-+	    interface != PHY_INTERFACE_MODE_10GBASER)
++	if (priv->data->port_type != AIROHA_PCS_PON)
 +		return -EOPNOTSUPP;
++
++	/* GPON uses 2500BASEX; XG-PON/XGS-PON/EPON-10G use 10GBASER. */
++	if (priv->pon_mode == AIROHA_PCS_PON_MODE_GPON) {
++		if (interface != PHY_INTERFACE_MODE_2500BASEX)
++			return -EOPNOTSUPP;
++	} else {
++		if (interface != PHY_INTERFACE_MODE_10GBASER)
++			return -EOPNOTSUPP;
++	}
 +
 +	priv->pon_last_error = 0;
 +	priv->pon_calibration_runs++;
@@ -1955,9 +1997,8 @@ Index: b/drivers/net/pcs/airoha/pcs-an7581.c
 +int an7581_pcs_pon_start_rx(struct airoha_pcs_priv *priv, int index,
 +			    phy_interface_t interface)
 +{
-+	/* 1G and 2.5G PON modes use the existing bring-up path. */
-+	if (priv->pon_mode == AIROHA_PCS_PON_MODE_GPON ||
-+	    priv->pon_mode == AIROHA_PCS_PON_MODE_EPON_1G)
++	/* EPON 1G uses the existing bring-up path; GPON/XG-PON/XGS-PON use full PON init. */
++	if (priv->pon_mode == AIROHA_PCS_PON_MODE_EPON_1G)
 +		return an7581_pcs_bringup(priv, index, interface);
 +
 +	return an7581_pcs_pon_first_plug(priv, index, interface);
@@ -1985,7 +2026,7 @@ Index: b/drivers/net/pcs/airoha/pcs-an7581.c
  static int an7581_pcs_phya_bringup(struct airoha_pcs_priv *priv,
  				   int index, phy_interface_t interface)
  {
-@@ -1834,6 +3296,8 @@ static int an7581_pcs_phya_bringup(struc
+@@ -1834,6 +3308,8 @@
  
  	an7581_pcs_tx_bringup(priv, index, interface);
  	an7581_pcs_rx_bringup(priv, index, interface);
