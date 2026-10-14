@@ -3,8 +3,11 @@ src-git luci https://github.com/immortalwrt/luci.git
 src-git routing https://github.com/openwrt/routing.git
 src-git telephony https://github.com/openwrt/telephony.git
 src-git video https://github.com/openwrt/video.git
-src-git pon_drivers https://github.com/pbs05/openwrt-pon-drivers.git
-src-git pon_userspace https://github.com/pbs05/openwrt-pon-userspace.git
+# GPON: PON 两个 feed 指向含 GPON 兼容性改造的 fork。
+# 上游 pbs05 只实现 XG-PON / 10G-EPON（GPON 的 mac_supported=false，控制器启动返回 -EOPNOTSUPP），
+# GPON 的 MAC 层参数与 LuCI 模式选项在 DenzelVicent fork 的 main 分支上，改回上游即失去 GPON 支持。
+src-git pon_drivers https://github.com/DenzelVicent/openwrt-pon-drivers.git
+src-git pon_userspace https://github.com/DenzelVicent/openwrt-pon-userspace.git
 #src-git targets https://github.com/openwrt/targets.git
 #src-git oldpackages http://git.openwrt.org/packages.git
 #src-link custom /usr/src/openwrt/custom-feed

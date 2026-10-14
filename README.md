@@ -32,6 +32,16 @@ The authors and contributors are not responsible for device damage, network serv
 
 ## Build
 
+> This branch, `AN7581-gpon`, is for GPON line debugging on AN7581 devices (use `master` for XGS-PON). Compared with `master` it adds only three things: GPON mode register setup in the kernel PCS patch, PON feeds pointing at the GPON forks, and the local build config `configs/an7581-gpon.config`.
+>
+> GPON support spans three sources, missing any one of them leaves the ONU unregistered:
+>
+> | Source | Branch | Content |
+> | --- | --- | --- |
+> | PonWrt | `AN7581-gpon` | Kernel patch `target/linux/airoha/patches-6.18/608-net-pcs-airoha-add-AN7581-PON-line-modes.patch`: GPON writes `DIG_RESERVE_0=0x400` and sets `FORCE_RX_RDY` |
+> | [openwrt-pon-drivers](https://github.com/DenzelVicent/openwrt-pon-drivers) | `main` | PON MAC driver: enables GPON `mac_supported`, digital PHY RX mode `0x400`, response time `0xAA2` |
+> | [openwrt-pon-userspace](https://github.com/DenzelVicent/openwrt-pon-userspace) | `main` | LuCI / userspace: adds the GPON mode option to the PON configuration dropdown |
+
 ```sh
 #  Install the required toolchain and libraries for building
 sudo apt update -y
@@ -49,25 +59,43 @@ sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bis
 sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
 
 
-#  Clone the source code
-git clone https://github.com/pbs05/ponwrt.git
+#  Clone the source code (GPON branch; use master / the upstream repository for XGS-PON)
+git clone -b AN7581-gpon https://github.com/DenzelVicent/ponwrt.git
 cd ponwrt
 
 
 #  Update and install feeds (package sources)
+#  On this branch feeds.conf.default already points pon_drivers / pon_userspace at the GPON forks,
+#  so update -a picks up the GPON code. Reverting those two lines to upstream pbs05 builds an
+#  XG-PON-only driver again.
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
 
-#  Select a configuration, using 7581 as an example
-cp configs/an7581.config .config
-#  If the target is AN7583, use the following line instead:
-cp configs/an7583.config .config
+#  Third-party plugins: required when using config A below (neither package exists in any feed, so
+#  kconfig drops them silently instead of failing); optional with config B
+#  Must run after feeds install: luci-base and other feed packages are linked by then, so the
+#  plugin dependencies resolve correctly
+git clone --depth 1 https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
+git clone --depth 1 https://github.com/DenzelVicent/luci-app-airoha-npu.git package/luci-app-airoha-npu
+
+
+#  Select a configuration, pick one of A / B (both already select kmod-airoha-xpon /
+#  kmod-airoha-pon-frontend / luci-app-pon / airoha-ponctl·pond·pon-debug, so menuconfig is not needed)
+#  A. Reproduce the GPON cloud build: only the nokia_xg-040g-md-ubi profile, with the PON components
+#     and third-party UIs selected exactly as CI does
+cp configs/an7581-gpon.config .config
+#  B. (optional) Build for every AN7581 board upstream supports: an7581.config selects 12 profiles, much
+#     slower than a single one. Targeting AN7583? Replace an7581 with an7583 below
+# cp configs/an7581.config .config
+# ./scripts/kconfig.pl + configs/an7581.config configs/release.config > .config
 
 
 
 #  Start building
 # -j$(nproc) means compiling in parallel with all CPU cores to speed things up
+#  The kernel-side GPON changes (PCS/PMA registers) are compiled into the kernel, so rebuilding only
+#  the PON packages does not apply them — a full firmware build is required
 make defconfig
 make -j$(nproc)
 ```
