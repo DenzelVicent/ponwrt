@@ -10,8 +10,8 @@ src-git telephony https://github.com/openwrt/telephony.git
 src-git video https://github.com/openwrt/video.git
 # PON 两个 feed 指向本仓库 fork，内容与 pbs05 上游一致。
 # 固定 commit 保证构建可复现；升级 fork 时同步修改此处。
-src-git pon_drivers https://github.com/DenzelVicent/openwrt-pon-drivers.git^e5194d2dfd169eef8f4a944fdc3f929e0287b680
-src-git pon_userspace https://github.com/DenzelVicent/openwrt-pon-userspace.git^cce9d756742487b378749c606b30e13ee9b0f093
+src-git pon_drivers https://github.com/DenzelVicent/openwrt-pon-drivers.git
+src-git pon_userspace https://github.com/DenzelVicent/openwrt-pon-userspace.git
 #src-git targets https://github.com/openwrt/targets.git
 #src-git oldpackages http://git.openwrt.org/packages.git
 #src-link custom /usr/src/openwrt/custom-feed
