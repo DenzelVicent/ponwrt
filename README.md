@@ -30,6 +30,16 @@ PonWrt 是一个用于研究和开发的开源光猫固件项目。
 
 ## 编译
 
+> 本分支 `AN7581-GPON` 用于 AN7581 设备的 GPON 线路调试（XGS-PON 请用 `master`）。相对 `master` 的**代码改动只有内核 PCS patch 608**；另有 `feeds.conf.default` 的 PON feed 指向含 GPON 改造的 fork、新增 GPON 本地编译配置 `an7581-gpon.config`，以及文档与分支清理提交。
+>
+> GPON 支持横跨三个来源，缺一 ONU 就无法注册：
+>
+> | 来源 | 分支 | 内容 |
+> | --- | --- | --- |
+> | PonWrt | `AN7581-gpon` | 内核 patch `target/linux/airoha/patches-6.18/608-net-pcs-airoha-add-AN7581-PON-line-modes.patch`：GPON 写 `DIG_RESERVE_0=0x400` 并置 `FORCE_RX_RDY` |
+> | [openwrt-pon-drivers](https://github.com/DenzelVicent/openwrt-pon-drivers) | `main` | PON MAC 驱动：解锁 GPON `mac_supported`、数字 PHY RX 模式 `0x400`、响应时间 `0xAA2` |
+> | [openwrt-pon-userspace](https://github.com/DenzelVicent/openwrt-pon-userspace) | `main` | LuCI/用户态：PON 配置下拉增加 GPON 模式选项 |
+
 ```sh
 #  安装编译所需的工具链和库
 sudo apt update -y
@@ -46,12 +56,16 @@ sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bis
 #  或者使用ImmortalWrt一键脚本安装依赖
 sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
 
-#  拉取源码（用 master 分支与上游仓库保持同步）
+#  拉取源码（GPON 分支；XGS-PON 用 master 分支与上游仓库）
 #  浅克隆只取当前快照，编译够用；需要完整历史/版本号时去掉 --depth 1
-git clone --depth 1 -b master https://github.com/DenzelVicent/ponwrt.git
+git clone --depth 1 -b AN7581-GPON https://github.com/DenzelVicent/ponwrt.git
 cd ponwrt
 
 #  更新并安装 feeds（软件包源）
+#  本分支 feeds.conf.default 里 pon_drivers / pon_userspace 已指向含 GPON 改造的 fork，
+#  直接 update -a 即取到 GPON 代码；若这两行被改回上游 pbs05，编出的驱动仍是 XG-PON only
+#  注意：feed 用 ^commit 固定，已存在的目录不会被 update 切到新 pin；升级 fork 后
+#  先删掉对应 feeds/<name> 再 update（详见下文“修改代码后的增量编译”）
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
@@ -63,7 +77,7 @@ git clone --depth 1 https://github.com/DenzelVicent/luci-app-airoha-npu.git pack
 #  选择配置（A / B 二选一；两者都已默认选中 kmod-airoha-xpon / kmod-airoha-pon-frontend /
 #  luci-app-pon / airoha-ponctl·pond·pon-debug，不用再进 menuconfig）
 #  A. 复现 GPON 云编译产物：只编 nokia_xg-040g-md-ubi 一个 profile，PON 组件与第三方界面按 CI 全量选中
-cp an7581.config .config
+cp an7581-gpon.config .config
 #  B. （可选）编译上游支持的全部 AN7581 设备：an7581.config 选了 12 个 profile，耗时远长于单设备
 #     目标是 AN7583 就把下面的 an7581 换成 an7583
 # cp configs/an7581.config .config
@@ -72,20 +86,70 @@ cp an7581.config .config
 
 #  开始编译
 # -j$(nproc) 表示用所有 CPU 核心并行编译，加快速度
+# 内核侧 GPON 改动（PCS/PMA 寄存器）在编译期打进内核，只单独重编 PON 软件包不会生效，需重编完整固件
 make defconfig
 make download -j8 V=s
-make -j$(nproc)
-
-
-# 修改补丁后可快速编译内核后打包
-# 1. 只重建内核（重解压 + 重打 patch + 重编）
-make target/linux/clean
-make target/linux/compile -j$(nproc)
-# 2. 生成固件镜像（打包 kernel + rootfs）
 make -j$(nproc)
 ```
 
 固件位于 `bin/targets/airoha/an7581/` 或 `bin/targets/airoha/an7583/`。
+
+### 修改代码后的增量编译
+
+GPON 改动分布在三个位置，重建范围不同，不要每次都全量重编。
+
+**内核补丁**（`target/linux/airoha/patches-6.18/608-net-pcs-airoha-add-AN7581-PON-line-modes.patch`）
+
+```sh
+# hunk 行数错误会在编译后期才报 malformed patch，先本地校验（CRLF 同样会导致打不上）
+python3 tmp/hunk_check.py target/linux/airoha/patches-6.18/608-net-pcs-airoha-add-AN7581-PON-line-modes.patch
+
+make target/linux/clean
+make target/linux/prepare V=s          # 先确认补丁能重新打上
+make target/linux/compile -j$(nproc) V=s
+make -j$(nproc)                        # 重打固件镜像
+```
+
+`target/linux/clean` 会删除当前目标的 `build_dir/target-*/linux-*`，强制重新解压并重打补丁；只做增量编译不会重新应用修改后的补丁。
+
+**PON 驱动 / 用户态 feed**
+
+feed 在 `feeds.conf.default` 中用 `^commit` 固定；已有 checkout 的 `feeds update` 只做 `git pull --ff-only`，不会切到新 pin，必须删掉重新拉取：
+
+```sh
+# 1. 在 fork 仓库提交并推送，记下新 commit
+# 2. 更新 feeds.conf.default 中对应 feed 的 ^commit
+rm -rf feeds/pon_drivers          # 用户态改动改为 feeds/pon_userspace
+./scripts/feeds update pon_drivers
+./scripts/feeds install -a
+make defconfig
+
+# 驱动：frontends 与 xpon 有符号依赖，两个包都要重编
+make package/feeds/pon_drivers/airoha-pon-frontends/clean
+make package/feeds/pon_drivers/airoha-xpon/clean
+make package/feeds/pon_drivers/airoha-pon-frontends/compile -j$(nproc) V=s
+make package/feeds/pon_drivers/airoha-xpon/compile -j$(nproc) V=s
+
+# 用户态（按实际改动选择）：airoha-pon-daemons / airoha-ponctl /
+# airoha-pon-debug / luci-app-pon / luci-app-iptv
+make package/feeds/pon_userspace/airoha-ponctl/clean
+make package/feeds/pon_userspace/airoha-ponctl/compile -j$(nproc) V=s
+
+make -j$(nproc)                   # 重打固件镜像
+```
+
+仅做本地验证、暂时不推送时，可以直接改 `feeds/pon_drivers`（或 `feeds/pon_userspace`）里的源码，然后只清包重编；期间不要执行 `feeds update`。这种构建不可复现，最终版本仍须提交 fork、推送并更新 pin，否则云编译取不到改动。
+
+**构建记录**
+
+每次出包至少记录以下四项，便于问题归因和跨构建对比：
+
+```sh
+git rev-parse HEAD
+git -C feeds/pon_drivers rev-parse HEAD      # 应等于 feeds.conf.default 的 pin
+git hash-object target/linux/airoha/patches-6.18/608-net-pcs-airoha-add-AN7581-PON-line-modes.patch
+sha256sum bin/targets/airoha/an7581/*.itb
+```
 
 ## 刷入
 
