@@ -37,8 +37,8 @@ PonWrt 是一个用于研究和开发的开源光猫固件项目。
 > | 来源 | 分支 | 内容 |
 > | --- | --- | --- |
 > | PonWrt | `AN7581-gpon` | 内核 patch `target/linux/airoha/patches-6.18/608-net-pcs-airoha-add-AN7581-PON-line-modes.patch`：GPON 写 `DIG_RESERVE_0=0x400` 并置 `FORCE_RX_RDY` |
-> | [openwrt-pon-drivers](https://github.com/DenzelVicent/openwrt-pon-drivers) | `main` | PON MAC 驱动：解锁 GPON `mac_supported`、数字 PHY RX 模式 `0x400`、响应时间 `0xAA2` |
-> | [openwrt-pon-userspace](https://github.com/DenzelVicent/openwrt-pon-userspace) | `main` | LuCI/用户态：PON 配置下拉增加 GPON 模式选项 |
+> | [openwrt-pon-drivers](https://github.com/DenzelVincent/openwrt-pon-drivers) | `main` | PON MAC 驱动：解锁 GPON `mac_supported`、数字 PHY RX 模式 `0x400`、响应时间 `0xAA2` |
+> | [openwrt-pon-userspace](https://github.com/DenzelVincent/openwrt-pon-userspace) | `main` | LuCI/用户态：PON 配置下拉增加 GPON 模式选项 |
 
 ```sh
 #  安装编译所需的工具链和库
@@ -58,7 +58,7 @@ sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_en
 
 #  拉取源码（GPON 分支；XGS-PON 用 master 分支与上游仓库）
 #  浅克隆只取当前快照，编译够用；需要完整历史/版本号时去掉 --depth 1
-git clone --depth 1 -b AN7581-GPON https://github.com/DenzelVicent/ponwrt.git
+git clone --depth 1 -b AN7581-GPON https://github.com/DenzelVincent/ponwrt.git
 cd ponwrt
 
 #  更新并安装 feeds（软件包源）
@@ -72,7 +72,7 @@ cd ponwrt
 #  第三方插件：选配置 A 时必须克隆（这两个包不在任何 feed 内，缺了会被静默跳过、不报错）；选配置 B 时按需
 #  顺序要求：必须在 feeds install 之后执行（此时 luci-base 等 feed 包已就位，插件依赖才能被解析）
 git clone --depth 1 https://github.com/gdy666/luci-app-lucky.git package/luci-app-lucky
-git clone --depth 1 https://github.com/DenzelVicent/luci-app-airoha-npu.git package/luci-app-airoha-npu
+git clone --depth 1 https://github.com/DenzelVincent/luci-app-airoha-npu.git package/luci-app-airoha-npu
 
 #  选择配置（A / B 二选一；两者都已默认选中 kmod-airoha-xpon / kmod-airoha-pon-frontend /
 #  luci-app-pon / airoha-ponctl·pond·pon-debug，不用再进 menuconfig）
