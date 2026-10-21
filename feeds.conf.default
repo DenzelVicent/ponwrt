@@ -5,6 +5,8 @@ src-git telephony https://github.com/openwrt/telephony.git
 src-git video https://github.com/openwrt/video.git
 src-git pon_drivers https://github.com/pbs05/openwrt-pon-drivers.git
 src-git pon_userspace https://github.com/pbs05/openwrt-pon-userspace.git
+# lucky 仓库根下是 lucky/ 与 luci-app-lucky/ 两个包目录，可直接作 feed；固定提交避免上游改动影响编译
+src-git lucky https://github.com/gdy666/luci-app-lucky.git^9449a5250c61f1aa8f16b2d8e04a9da25c26e735
 #src-git targets https://github.com/openwrt/targets.git
 #src-git oldpackages http://git.openwrt.org/packages.git
 #src-link custom /usr/src/openwrt/custom-feed
