@@ -12,6 +12,9 @@ src-git video https://github.com/openwrt/video.git
 # 固定 commit 保证构建可复现；升级 fork 时同步修改此处。
 src-git pon_drivers https://github.com/DenzelVincent/openwrt-pon-drivers.git
 src-git pon_userspace https://github.com/DenzelVincent/openwrt-pon-userspace.git
+# lucky 仓库根下是 lucky/ 与 luci-app-lucky/ 两个包目录，可直接作 feed；固定提交避免上游改动影响编译
+# 已存在的 feeds/lucky 不会自动切到固定提交，升级时先 rm -rf feeds/lucky 再 update
+src-git lucky https://github.com/gdy666/luci-app-lucky.git^9449a5250c61f1aa8f16b2d8e04a9da25c26e735
 #src-git targets https://github.com/openwrt/targets.git
 #src-git oldpackages http://git.openwrt.org/packages.git
 #src-link custom /usr/src/openwrt/custom-feed
